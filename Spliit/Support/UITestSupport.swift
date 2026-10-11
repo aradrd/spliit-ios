@@ -42,6 +42,9 @@ enum UITestSupport {
         /// scanning one, and attaching one — instead of opening a camera the simulator has not
         /// got or a library with nothing in it. Present with no value.
         static let receiptSample = "-uiTestReceiptSample"
+        /// Attach the two-page PDF the app draws for itself instead of offering Files, whose
+        /// picker runs out of process where no test can reach into it. Present with no value.
+        static let pdfSample = "-uiTestPDFSample"
         /// A QR code payload to take as if the camera had just read it. A simulator has no
         /// camera at all, so this is the only way in to everything that happens after a scan.
         static let qrCodeSample = "-uiTestQRCodeSample"
@@ -62,6 +65,38 @@ enum UITestSupport {
     /// pass through the form's body, so it stays a look at the launch arguments.
     static var usesSampleReceipt: Bool {
         ProcessInfo.processInfo.arguments.contains(Argument.receiptSample)
+    }
+
+    /// Whether this run supplies a drawn PDF in place of one picked from Files. Asked on every
+    /// pass through the form's body, like `usesSampleReceipt`.
+    static var usesSamplePDF: Bool {
+        ProcessInfo.processInfo.arguments.contains(Argument.pdfSample)
+    }
+
+    /// A two-page PDF of the sample receipt, attached through the same path a PDF from Files
+    /// takes — its pages drawn, then uploaded one after the other.
+    ///
+    /// No background, because a real PDF has none, and the second page says which it is, so the
+    /// two are different pictures.
+    ///
+    /// Nil unless the launch argument is present.
+    static func samplePDF() -> Data? {
+        guard usesSamplePDF else { return nil }
+        let font = UIFont.monospacedSystemFont(ofSize: 14, weight: .regular)
+        // Letter, in points: the size the page is laid out in, not the size it is drawn at.
+        let renderer = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 612, height: 792))
+        return renderer.pdfData { context in
+            for page in 1...2 {
+                context.beginPage()
+                let lines = SampleReceipt.lines + ["", "Page \(page) of 2"]
+                for (index, line) in lines.enumerated() {
+                    line.draw(
+                        at: CGPoint(x: 72, y: 72 + CGFloat(index) * 20),
+                        withAttributes: [.font: font, .foregroundColor: UIColor.black]
+                    )
+                }
+            }
+        }
     }
 
     /// A receipt to scan or to attach, for a suite with no camera and an empty photo library.

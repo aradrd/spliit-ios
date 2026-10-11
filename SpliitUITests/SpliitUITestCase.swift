@@ -51,6 +51,7 @@ class SpliitUITestCase: XCTestCase {
         openURL: String? = nil,
         exchangeRate: String? = nil,
         receiptSample: Bool = false,
+        pdfSample: Bool = false,
         qrCode: String? = nil
     ) -> XCUIApplication {
         let app = XCUIApplication()
@@ -91,6 +92,9 @@ class SpliitUITestCase: XCTestCase {
         }
         if receiptSample {
             app.launchArguments.append("-uiTestReceiptSample")
+        }
+        if pdfSample {
+            app.launchArguments.append("-uiTestPDFSample")
         }
         if let qrCode {
             app.launchArguments += ["-uiTestQRCodeSample", qrCode]

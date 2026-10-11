@@ -186,12 +186,12 @@ struct ExpenseDocumentsSection: View {
 
     // MARK: - Picking
 
-    /// Whether this run attaches a receipt the app draws for itself. A simulator claims a camera
-    /// it hasn't got, has no photo library worth driving and a Files picker no test can reach
-    /// into, so under UI test the tile is a single button rather than a menu of all three.
+    /// Whether this run attaches a receipt or a PDF the app draws for itself. A simulator claims a
+    /// camera it hasn't got, has no photo library worth driving and a Files picker no test can
+    /// reach into, so under UI test the tile is a single button rather than a menu of all three.
     private var usesSampleDocument: Bool {
         #if DEBUG
-        return UITestSupport.usesSampleReceipt
+        return UITestSupport.usesSampleReceipt || UITestSupport.usesSamplePDF
         #else
         return false
         #endif
@@ -199,6 +199,10 @@ struct ExpenseDocumentsSection: View {
 
     private func attachSample() {
         #if DEBUG
+        if let pdf = UITestSupport.samplePDF() {
+            uploads.attach(pdf: pdf, to: instanceURL, app: app) { documents.append($0) }
+            return
+        }
         if let sample = UITestSupport.sampleReceipt() {
             attach(sample)
             return
