@@ -2,6 +2,7 @@ import PhotosUI
 import SpliitAPI
 import SpliitCore
 import SwiftUI
+import UniformTypeIdentifiers
 import VisionKit
 
 /// The receipts kept with an expense: a grid of what is attached, and a way to add more.
@@ -23,6 +24,7 @@ struct ExpenseDocumentsSection: View {
 
     @State private var presented: Presented?
     @State private var isShowingLibrary = false
+    @State private var isShowingFiles = false
     @State private var pickedItems: [PhotosPickerItem] = []
 
     /// One presentation for the whole section, rather than a `fullScreenCover` per thing to
@@ -93,6 +95,19 @@ struct ExpenseDocumentsSection: View {
             matching: .images
         )
         .task(id: pickedItems.count) { await attachPickedPhotos() }
+        // On the grid beside the photo picker, not on the menu that opens it: the menu's item
+        // closes as the picker opens, and a presentation attached to it would be rebuilt mid-way.
+        .fileImporter(
+            isPresented: $isShowingFiles,
+            allowedContentTypes: [.pdf, .image],
+            allowsMultipleSelection: true
+        ) { result in
+            // A failure is the picker's own, with nothing picked to say anything about.
+            guard case .success(let urls) = result else { return }
+            for url in urls {
+                attachFile(at: url)
+            }
+        }
         .fullScreenCover(item: $presented) { presented in
             switch presented {
             case .camera:
@@ -105,26 +120,32 @@ struct ExpenseDocumentsSection: View {
         }
     }
 
-    /// The tile that adds one. A menu where there is a camera to choose between, a plain button
-    /// where there is not — the same shape, and for the same reason, as the scan row above it.
+    /// The tile that adds one: a menu of the camera, where there is one, the photo library and
+    /// Files — which is where a PDF receipt arrives, from a mail or a booking site.
+    ///
+    /// Under UI test it is a single button that attaches what the app draws for itself instead.
     @ViewBuilder
     private var addTile: some View {
-        if offersCamera {
+        if usesSampleDocument {
+            Button { attachSample() } label: { addLabel }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("Attach a document"))
+                .accessibilityIdentifier(AccessibilityID.Documents.addButton)
+        } else {
             Menu {
-                Button("Take Photo", systemImage: "camera") { presented = .camera }
+                if VNDocumentCameraViewController.isSupported {
+                    Button("Take Photo", systemImage: "camera") { presented = .camera }
+                }
                 Button("Choose Photos", systemImage: "photo.on.rectangle") {
                     isShowingLibrary = true
                 }
+                Button("Choose Files", systemImage: "folder") { isShowingFiles = true }
+                    .accessibilityIdentifier(AccessibilityID.Documents.chooseFilesButton)
             } label: {
                 addLabel
             }
             .accessibilityLabel(Text("Attach a document"))
             .accessibilityIdentifier(AccessibilityID.Documents.addButton)
-        } else {
-            Button { pickPhoto() } label: { addLabel }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text("Attach a document"))
-                .accessibilityIdentifier(AccessibilityID.Documents.addButton)
         }
     }
 
@@ -144,9 +165,13 @@ struct ExpenseDocumentsSection: View {
     private var footer: Text {
         switch uploads.status {
         case .idle:
-            documents.isEmpty
-                ? Text("Photograph the receipt and it stays with the expense.")
-                : Text("Tap a document to see it full size.")
+            if let pages = uploads.firstPagesOnly {
+                Text("Only the first \(pages) pages were attached.")
+            } else {
+                documents.isEmpty
+                    ? Text("Photograph the receipt and it stays with the expense.")
+                    : Text("Tap a document to see it full size.")
+            }
         case .uploading:
             Text("Uploading…")
         case .unsupported:
@@ -161,17 +186,18 @@ struct ExpenseDocumentsSection: View {
 
     // MARK: - Picking
 
-    /// Whether there is a camera to choose between. A simulator claims one it hasn't got, and it
-    /// has no photo library worth driving either, so under UI test the tile is the single button
-    /// that attaches the receipt the app draws for itself.
-    private var offersCamera: Bool {
+    /// Whether this run attaches a receipt the app draws for itself. A simulator claims a camera
+    /// it hasn't got, has no photo library worth driving and a Files picker no test can reach
+    /// into, so under UI test the tile is a single button rather than a menu of all three.
+    private var usesSampleDocument: Bool {
         #if DEBUG
-        if UITestSupport.usesSampleReceipt { return false }
+        return UITestSupport.usesSampleReceipt
+        #else
+        return false
         #endif
-        return VNDocumentCameraViewController.isSupported
     }
 
-    private func pickPhoto() {
+    private func attachSample() {
         #if DEBUG
         if let sample = UITestSupport.sampleReceipt() {
             attach(sample)
@@ -196,6 +222,28 @@ struct ExpenseDocumentsSection: View {
             uploads.attach(file: data, to: instanceURL, app: app) { documents.append($0) }
         }
         pickedItems = []
+    }
+
+    /// A file out of the Files picker: a PDF has its pages drawn, and anything else the picker let
+    /// through is a picture and goes the way a photo does.
+    ///
+    /// Read here, before anything is awaited. The URL points into another app's storage, and the
+    /// permission to open it lasts exactly as long as the access started below.
+    private func attachFile(at url: URL) {
+        let isScoped = url.startAccessingSecurityScopedResource()
+        defer {
+            if isScoped { url.stopAccessingSecurityScopedResource() }
+        }
+
+        let data = try? Data(contentsOf: url)
+        let type = (try? url.resourceValues(forKeys: [.contentTypeKey]))?.contentType
+            ?? UTType(filenameExtension: url.pathExtension)
+
+        if type?.conforms(to: .pdf) == true {
+            uploads.attach(pdf: data, to: instanceURL, app: app) { documents.append($0) }
+        } else {
+            uploads.attach(file: data, to: instanceURL, app: app) { documents.append($0) }
+        }
     }
 
     private func attach(_ photo: ReceiptPhoto) {
