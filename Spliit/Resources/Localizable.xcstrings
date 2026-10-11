@@ -2161,6 +2161,40 @@
         }
       }
     },
+    "That PDF couldn’t be read.": {
+      "comment": "Footer under the documents grid when a PDF picked from Files cannot be opened or drawn.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That PDF couldn’t be read."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce PDF n’a pas pu être lu."
+          }
+        }
+      }
+    },
+    "That PDF is protected by a password.": {
+      "comment": "Footer under the documents grid when a PDF picked from Files needs a password to open.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That PDF is protected by a password."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce PDF est protégé par un mot de passe."
+          }
+        }
+      }
+    },
     "That QR code isn’t a Spliit group link.": {
       "localizations": {
         "fr": {
