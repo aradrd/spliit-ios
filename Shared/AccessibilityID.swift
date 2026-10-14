@@ -182,6 +182,8 @@ enum AccessibilityID {
     /// suite has no way to know one, while "the first one in the grid" is exactly what it means.
     enum Documents {
         static let addButton = "documents.add"
+        /// The menu item that opens Files, where a PDF receipt is picked.
+        static let chooseFilesButton = "documents.chooseFiles"
         static let status = "documents.status"
         static let doneButton = "documents.done"
         static let removeButton = "documents.remove"

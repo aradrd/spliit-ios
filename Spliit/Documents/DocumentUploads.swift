@@ -1,4 +1,5 @@
 import SpliitAPI
+import SpliitCore
 import SwiftUI
 
 /// The documents being added to one expense: the uploads in flight, how the last one went, and
@@ -44,14 +45,31 @@ final class DocumentUploads {
     private(set) var inFlight: [Upload] = []
     private(set) var status = Status.idle
 
+    /// How many pages the last PDF was cut to, when it had more than that — which the footer
+    /// says, since a booking confirmation missing its last pages looks complete otherwise.
+    ///
+    /// Kept apart from `status` because every upload that lands sets that back to idle, and the
+    /// last page landing would take the notice with it before anyone had read it. Cleared by the
+    /// next thing somebody attaches, not by the pages of the PDF it describes.
+    private(set) var firstPagesOnly: Int?
+
     /// Shared by the grid and the gallery, so opening a receipt shows the picture the grid
     /// already has.
     let images = DocumentImages()
 
+    /// PDFs whose pages are still being drawn. Before the first page and between one page's
+    /// upload and the next, nothing is in flight — and a save in that gap would write the expense
+    /// with half a receipt.
+    private var drawingPDFs = 0
+
+    /// The PDF drawn before this one, which the next waits for: two picked together would
+    /// otherwise land page by page in turn, and the gallery would deal them out like cards.
+    private var previousPDF: Task<Void, Never>?
+
     /// Whether the form should wait before saving: a document is on the expense only once the
     /// instance has answered with its address, and a save before that writes the expense
     /// without it.
-    var isUploading: Bool { !inFlight.isEmpty }
+    var isUploading: Bool { !inFlight.isEmpty || drawingPDFs > 0 }
 
     /// An image file as it arrived out of the photo library — or nil, when the library could not
     /// produce one. Either way, one this device cannot read is reported in the grid's footer,
@@ -77,12 +95,88 @@ final class DocumentUploads {
         app: AppModel,
         onStored: @escaping (ExpenseDocument) -> Void
     ) {
+        firstPagesOnly = nil
+        guard let upload = begin(photo, on: instanceURL, app: app) else { return }
+        Task {
+            await store(photo, as: upload, to: instanceURL, app: app, onStored: onStored)
+        }
+    }
+
+    /// A PDF — an e-receipt, a booking confirmation — attached as a picture of each of its first
+    /// few pages, which is the only kind of document the web app can show. See `PDFPages`.
+    ///
+    /// One page at a time, each uploaded before the next is drawn. The gallery shows documents in
+    /// the order they were stored, and pages uploaded side by side are stored in the order they
+    /// happen to finish; it also means one page is held in memory rather than five.
+    func attach(
+        pdf data: Data?,
+        to instanceURL: URL,
+        app: AppModel,
+        onStored: @escaping (ExpenseDocument) -> Void
+    ) {
+        guard app.storesDocuments(on: instanceURL) else {
+            status = .unsupported
+            return
+        }
+        firstPagesOnly = nil
+        guard let data else {
+            status = .failed(String(localized: "That PDF couldn’t be read."))
+            return
+        }
+
+        drawingPDFs += 1
+        status = .uploading
+        let previous = previousPDF
+        previousPDF = Task {
+            defer { drawingPDFs -= 1 }
+            await previous?.value
+
+            let pages: PDFPages
+            do {
+                pages = try await Task.detached(priority: .userInitiated) {
+                    try PDFPages(data: data)
+                }.value
+            } catch PDFPages.Failure.locked {
+                status = .failed(String(localized: "That PDF is protected by a password."))
+                return
+            } catch {
+                status = .failed(String(localized: "That PDF couldn’t be read."))
+                return
+            }
+
+            for index in 0..<pages.count {
+                // Off the main actor for the reason the photograph's redraw is: a page at full
+                // size is the same work as a large photo.
+                guard let page = await Task.detached(priority: .userInitiated, operation: {
+                    pages.image(ofPage: index)
+                }).value else {
+                    status = .failed(String(localized: "That PDF couldn’t be read."))
+                    return
+                }
+                let photo = ReceiptPhoto(image: page)
+                // A page that fails stops the rest, so what is attached is always the start of
+                // the document and the reason it stopped stays in the footer.
+                guard let upload = begin(photo, on: instanceURL, app: app),
+                      await store(photo, as: upload, to: instanceURL, app: app, onStored: onStored)
+                else { return }
+            }
+
+            if pages.pageCount > pages.count {
+                firstPagesOnly = pages.count
+            }
+        }
+    }
+
+    /// The half of an upload that has to happen before anything is awaited: the tile appears and
+    /// the form stops offering to save in the same update, so there is no moment in which a save
+    /// would go without this picture.
+    private func begin(_ photo: ReceiptPhoto, on instanceURL: URL, app: AppModel) -> Upload? {
         // Already answered for this session: the grid hides its add tile on the same condition,
         // and a photograph that arrives some other way deserves the same answer rather than a
         // request the instance has already refused once.
         guard app.storesDocuments(on: instanceURL) else {
             status = .unsupported
-            return
+            return nil
         }
 
         let full = UIImage(
@@ -93,47 +187,60 @@ final class DocumentUploads {
         )
         inFlight.append(upload)
         status = .uploading
+        return upload
+    }
 
-        Task {
-            defer { inFlight.removeAll { $0.id == upload.id } }
+    /// Re-encodes and uploads a picture `begin` has put in the grid, and says whether it was
+    /// stored.
+    @discardableResult
+    private func store(
+        _ photo: ReceiptPhoto,
+        as upload: Upload,
+        to instanceURL: URL,
+        app: AppModel,
+        onStored: @escaping (ExpenseDocument) -> Void
+    ) async -> Bool {
+        defer { inFlight.removeAll { $0.id == upload.id } }
 
-            // Off the main actor: re-encoding twelve megapixels is a tenth of a second the form
-            // would otherwise spend not responding.
-            guard let prepared = await Task.detached(priority: .userInitiated, operation: {
-                DocumentImage.prepared(from: photo)
-            }).value else {
-                status = .failed(String(localized: "That photo couldn’t be read."))
-                return
+        // Off the main actor: re-encoding twelve megapixels is a tenth of a second the form
+        // would otherwise spend not responding.
+        guard let prepared = await Task.detached(priority: .userInitiated, operation: {
+            DocumentImage.prepared(from: photo)
+        }).value else {
+            status = .failed(String(localized: "That photo couldn’t be read."))
+            return false
+        }
+
+        do {
+            let uploader = DocumentUploader(baseURL: instanceURL)
+            let url = try await uploader.upload(
+                prepared.data, contentType: prepared.contentType
+            )
+            // What everyone else will see, rather than the original: the thumbnail is then
+            // the picture that was actually stored, and it needs no round trip to appear.
+            if let stored = UIImage(data: prepared.data) {
+                images.remember(stored, for: url)
             }
-
-            do {
-                let uploader = DocumentUploader(baseURL: instanceURL)
-                let url = try await uploader.upload(
-                    prepared.data, contentType: prepared.contentType
+            onStored(
+                ExpenseDocument(
+                    id: ExpenseDocument.newID(),
+                    url: url,
+                    width: prepared.width,
+                    height: prepared.height
                 )
-                // What everyone else will see, rather than the original: the thumbnail is then
-                // the picture that was actually stored, and it needs no round trip to appear.
-                if let stored = UIImage(data: prepared.data) {
-                    images.remember(stored, for: url)
-                }
-                onStored(
-                    ExpenseDocument(
-                        id: ExpenseDocument.newID(),
-                        url: url,
-                        width: prepared.width,
-                        height: prepared.height
-                    )
-                )
-                Analytics.shared.event(.attachDocument)
-                status = .idle
-            } catch DocumentUploader.Failure.unsupported {
-                // Remembered for the session, so the next expense doesn't offer an upload this
-                // instance has already said it cannot accept.
-                app.noteDocumentStorageIsUnavailable(on: instanceURL)
-                status = .unsupported
-            } catch {
-                status = .failed(error.localizedDescription)
-            }
+            )
+            Analytics.shared.event(.attachDocument)
+            status = .idle
+            return true
+        } catch DocumentUploader.Failure.unsupported {
+            // Remembered for the session, so the next expense doesn't offer an upload this
+            // instance has already said it cannot accept.
+            app.noteDocumentStorageIsUnavailable(on: instanceURL)
+            status = .unsupported
+            return false
+        } catch {
+            status = .failed(error.localizedDescription)
+            return false
         }
     }
 }

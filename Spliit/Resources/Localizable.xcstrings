@@ -631,6 +631,23 @@
         }
       }
     },
+    "Choose Files": {
+      "comment": "Menu item that opens Files to attach a PDF or an image, alongside “Choose Photos”.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose Files"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choisir des fichiers"
+          }
+        }
+      }
+    },
     "Choose Photo": {
       "localizations": {
         "fr": {
@@ -1582,6 +1599,47 @@
         }
       }
     },
+    "Only the first %lld pages were attached.": {
+      "comment": "Footer under the documents grid when a PDF had more pages than are attached; the number is how many were.",
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Only the first page was attached."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Only the first %lld pages were attached."
+                }
+              }
+            }
+          }
+        },
+        "fr": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Seule la première page a été jointe."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Seules les %lld premières pages ont été jointes."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "Open Group": {
       "localizations": {
         "fr": {
@@ -2157,6 +2215,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "Touchez un document pour le voir en grand."
+          }
+        }
+      }
+    },
+    "That PDF couldn’t be read.": {
+      "comment": "Footer under the documents grid when a PDF picked from Files cannot be opened or drawn.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That PDF couldn’t be read."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce PDF n’a pas pu être lu."
+          }
+        }
+      }
+    },
+    "That PDF is protected by a password.": {
+      "comment": "Footer under the documents grid when a PDF picked from Files needs a password to open.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That PDF is protected by a password."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce PDF est protégé par un mot de passe."
           }
         }
       }

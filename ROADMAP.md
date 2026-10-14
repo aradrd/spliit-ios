@@ -589,6 +589,14 @@ Ordered by value to a phone user, not by web-app order.
   up, since somebody photographing a receipt into an expense means to keep it there. The
   footer under the scan row gave up its "it never leaves your iPhone" for that, and says
   instead what is still true and still worth saying — that the *reading* is on-device
+- ~~PDF documents~~ — **done**. *Choose Files* in the add menu takes a PDF — an
+  e-receipt, a booking confirmation — and attaches its first five pages, one document
+  each, with the footer saying so when there were more. The one thing worth knowing is
+  that **the pages arrive as pictures**: each is drawn on the phone at 2048 pixels and
+  uploaded the way a photograph is, because the web app takes only JPEG and PNG and draws
+  every document as an image with a width and height — a PDF uploaded as it is would be a
+  broken picture there (spliit#66, spliit#397). So it needs nothing from the instance, and
+  both products show the same pages
 - ~~Receipt scanning~~ — **done**, and on device as hoped: Vision's document recognition
   transcribes the photo and the system model reads the transcript, so it costs nothing,
   sends nobody's receipt anywhere, works offline and works against a self-hosted instance
